@@ -1,0 +1,14 @@
+numpy>=1.26
+pandas>=2.2
+matplotlib>=3.8
+folium>=0.17
+geopandas>=1.0
+shapely>=2.0
+pyproj>=3.6
+scikit-learn>=1.5
+scikit-optimize>=0.10
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+joblib>=1.4
+tqdm>=4.66
