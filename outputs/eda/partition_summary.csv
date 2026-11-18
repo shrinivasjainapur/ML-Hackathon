@@ -1,0 +1,3 @@
+partition,trip_count,total_gps_observations,mean_gps_observations,total_road_nodes,total_road_arcs
+student_test,10,19160,1916.0,90689,185041
+train,80,208417,2605.2125,1933485,3876904
