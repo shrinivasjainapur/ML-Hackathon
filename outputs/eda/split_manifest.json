@@ -1,0 +1,23 @@
+{
+  "seed": 42,
+  "group_key": "trip_id",
+  "training_partition": "train",
+  "development_partition": "student_test",
+  "evaluator_partition_included": false,
+  "train_trip_count": 80,
+  "student_test_trip_count": 10,
+  "holdout_method": "GroupShuffleSplit over one row per training trip",
+  "validation_fraction_requested": 0.2,
+  "fit_trip_count": 64,
+  "validation_trip_count": 16,
+  "cross_validation_method": "GroupKFold",
+  "cross_validation_folds": 5,
+  "cv_fold_trip_counts": {
+    "0": 16,
+    "1": 16,
+    "2": 16,
+    "3": 16,
+    "4": 16
+  },
+  "assignment_file": "trip_split_assignments.csv"
+}

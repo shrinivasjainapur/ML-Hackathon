@@ -1,0 +1,68 @@
+{
+  "feature_columns": [
+    "distance_to_segment_m",
+    "projected_fraction",
+    "segment_length_m",
+    "distance_to_start_m",
+    "distance_to_end_m",
+    "heading_cosine",
+    "heading_available",
+    "gps_speed_mps",
+    "time_gap_seconds",
+    "candidate_rank",
+    "candidate_count",
+    "nearest_fallback_used"
+  ],
+  "metadata_columns": [
+    "partition",
+    "trip_id",
+    "obs_idx",
+    "candidate_arc_id",
+    "reference_arc_id",
+    "reference_route_position",
+    "reference_alignment_distance_m",
+    "reference_alignment_confident",
+    "is_reference_candidate",
+    "has_reference_candidate"
+  ],
+  "label_column": "is_reference_candidate",
+  "candidate_generation": {
+    "method": "projected Euclidean distance to directed road segments",
+    "search_radius_m": 80.0,
+    "max_candidates_per_observation": 32,
+    "fallback": "nearest road segment when no segment intersects the search radius",
+    "nearest_fallback_used_feature": "nearest_fallback_used"
+  },
+  "reference_alignment": {
+    "method": "monotone Viterbi-style alignment of ordered route arcs to GPS observations",
+    "emission_scale_m": 25.0,
+    "advance_penalty": 1.0,
+    "confidence_threshold_m": 50.0,
+    "low_confidence_target_behavior": "reference candidate target is left blank when route alignment distance exceeds threshold",
+    "caution": "Derived alignment is an assumption; review route alignment distances and candidate misses."
+  },
+  "feature_selection": {
+    "method": "hand-designed geometry and motion features",
+    "scaling": "none during feature generation; fit any scaler within each training fold",
+    "feature_rationales": {
+      "distance_to_segment_m": "GPS-to-road perpendicular distance in metres",
+      "projected_fraction": "location along directed road segment from its start, from 0 to 1",
+      "segment_length_m": "length of the candidate segment in metres",
+      "distance_to_start_m": "GPS distance to the segment's start node in metres",
+      "distance_to_end_m": "GPS distance to the segment's end node in metres",
+      "heading_cosine": "alignment of GPS movement direction and directed segment orientation",
+      "heading_available": "whether a valid preceding GPS point supplies a movement direction",
+      "gps_speed_mps": "speed between consecutive GPS observations in metres per second",
+      "time_gap_seconds": "elapsed timestamp difference from the preceding observation",
+      "candidate_rank": "distance rank among the returned candidates",
+      "candidate_count": "number of candidates returned for this observation",
+      "nearest_fallback_used": "whether only the nearest segment was available outside the search radius"
+    }
+  },
+  "generated_summaries": [
+    "train_candidate_summary.csv",
+    "student_test_candidate_summary.csv"
+  ],
+  "student_test_is_development_data": true,
+  "evaluator_test_included": false
+}

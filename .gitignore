@@ -45,3 +45,21 @@ logs/
 **/.DS_Store
 Thumbs.db
 Desktop.ini
+
+# Keep compact, reproducible EDA/split evidence and feature manifests in Git.
+# Candidate-level matrices stay ignored because they can be large and are
+# reproducible from the source data and scripts.
+!outputs/
+outputs/*
+!outputs/eda/
+outputs/eda/*
+!outputs/eda/trip_inventory.csv
+!outputs/eda/partition_summary.csv
+!outputs/eda/data_quality_summary.md
+!outputs/eda/trip_split_assignments.csv
+!outputs/eda/split_manifest.json
+!outputs/features/
+outputs/features/*
+!outputs/features/feature_manifest.json
+!outputs/features/feature_summary.md
+!outputs/features/*_candidate_summary.csv

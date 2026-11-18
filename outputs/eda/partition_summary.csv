@@ -1,0 +1,3 @@
+partition,trip_count,trips_missing_track,trips_missing_nodes,trips_missing_arcs,trips_missing_route,total_gps_observations,median_gps_observations,total_road_nodes,total_road_arcs,total_reference_arcs,trips_with_parse_errors,invalid_node_coordinate_rows,invalid_arc_endpoints,invalid_route_arc_ids,disconnected_route_transitions,trips_with_equal_track_route_counts
+student_test,10,0,0,0,0,19160,1420.0,90689,185041,3477,0,0,0,0,1,0
+train,80,0,0,0,0,208417,1529.0,1933485,3876904,31336,0,0,0,0,13,0
