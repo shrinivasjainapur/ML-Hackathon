@@ -1,0 +1,36 @@
+{
+  "evaluation_partition": "student_test",
+  "trip_count": 10,
+  "evaluated_observations": 19133,
+  "confident_observations": 19133,
+  "candidate_misses": 0,
+  "candidate_miss_rate": 0.0,
+  "classifier_only": {
+    "top1_accuracy": 0.821564835624314,
+    "route_arc_macro_f1": 0.6623840726051293,
+    "direct_continuity": 0.903367573864238,
+    "connected_transitions": 17061,
+    "checked_transitions": 18886,
+    "inference_seconds": 0.2689892510024947
+  },
+  "hmm_viterbi": {
+    "top1_accuracy": 0.8357811111691841,
+    "route_arc_macro_f1": 0.7730892652052235,
+    "direct_continuity": 0.9612940802711003,
+    "connected_transitions": 18155,
+    "checked_transitions": 18886,
+    "decode_seconds": 60.805280709000726,
+    "missing_candidate_observations": 0,
+    "large_gap_resets": 1
+  },
+  "decoder_configuration": {
+    "state": "directed candidate road arc",
+    "emission": "log model probability normalized within each observation",
+    "transition": "directed shortest-path distance versus geodesic GPS displacement; finite penalty if disconnected",
+    "max_gap_seconds": 60.0,
+    "disconnected_penalty": 8.0,
+    "large_gap_behavior": "reset Viterbi chain for timestamp gaps above max_gap_seconds",
+    "missing_candidate_behavior": "arc_id -1 for missing observations; bridge candidate-bearing observations when possible"
+  },
+  "notes": "Reference labels are used for student_test scoring only. No evaluator_test data was read."
+}

@@ -63,3 +63,8 @@ outputs/features/*
 !outputs/features/feature_manifest.json
 !outputs/features/feature_summary.md
 !outputs/features/*_candidate_summary.csv
+!outputs/evaluation/
+outputs/evaluation/*
+!outputs/evaluation/student_test_hmm_comparison.json
+!outputs/evaluation/student_test_hmm_comparison.csv
+!outputs/evaluation/student_test_hmm_per_trip.csv

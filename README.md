@@ -181,6 +181,23 @@ This writes `outputs/models/final_model.joblib`, its configuration, a
 selection-comparison record, and final fit/development metrics. It does not
 read evaluator-test data.
 
+## HMM/Viterbi route decoding
+
+Compare the final classifier-only route with directed-road HMM/Viterbi decoding
+on the permitted development partition:
+
+```bash
+.venv/bin/python -m src.evaluation.compare_hmm_student_test
+```
+
+Candidate road arcs are the hidden states. Normalized model probabilities
+provide emissions; directed shortest-path distance and GPS displacement score
+transitions. Missing candidate observations are left unmatched and bridged
+when possible. Timestamp gaps over 60 seconds start a new decoding chain.
+The comparison and per-trip results are saved under `outputs/evaluation/`.
+These development outputs contain reference labels and must not be used as
+evaluator UI inputs.
+
 ## Source layout
 
 - `src/preprocessing/dataset.py`: shared file readers, trip container, and
@@ -192,8 +209,9 @@ read evaluator-test data.
 - `src/features/candidate_features.py`: Person 2 candidate generation,
   feature calculation, CLI, and outputs.
 - `src/models/`: candidate classifiers and shared Bayesian tuning workflow.
-- `src/optimization/`, `src/evaluation/`, and `src/map_matching/`: reserved for
-  additional optimization, evaluation, and route-decoding work.
+- `src/map_matching/hmm_viterbi.py`: candidate-state directed-road decoder.
+- `src/evaluation/`: student-test scoring and classifier-versus-decoder comparison.
+- `src/optimization/`: reserved for additional optimization utilities.
 
 ## Data integrity and reproducibility
 
