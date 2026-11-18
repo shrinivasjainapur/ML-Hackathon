@@ -169,6 +169,18 @@ Run a model from the repository root, for example:
 .venv/bin/python -m src.models.linear_svm
 ```
 
+After comparing validation and `student_test` results, refit the selected
+Bayesian configuration on all eligible training-trip candidates and evaluate
+that final artifact on `student_test`:
+
+```bash
+.venv/bin/python -m src.models.finalize_model
+```
+
+This writes `outputs/models/final_model.joblib`, its configuration, a
+selection-comparison record, and final fit/development metrics. It does not
+read evaluator-test data.
+
 ## Source layout
 
 - `src/preprocessing/dataset.py`: shared file readers, trip container, and
