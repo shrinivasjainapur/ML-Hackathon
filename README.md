@@ -1,4 +1,4 @@
-# PathSnap — Distributed Map-Matching & Route Reconstruction
+# ML-Hackathon — PathSnap: Distributed Map-Matching & Route Reconstruction
 
 PathSnap is a machine-learning system for matching noisy GPS observations to a road network and reconstructing a plausible vehicle route. The planned pipeline includes data exploration, preprocessing, feature engineering, model comparison, Bayesian hyperparameter optimisation, HMM/Viterbi decoding, a FastAPI backend, and an evaluator-facing UI.
 
