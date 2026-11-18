@@ -1,4 +1,4 @@
-"""Shared loading, trip-safe sampling, validation, and saving for model scripts."""
+"""Shared Bayesian tuning, trip-safe validation, and saving for model scripts."""
 from __future__ import annotations
 
 import argparse
@@ -12,7 +12,8 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import accuracy_score, average_precision_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.utils.class_weight import compute_sample_weight
+from sklearn.model_selection import GroupKFold
+from skopt import BayesSearchCV
 
 from src.features.candidate_features import FEATURE_COLUMNS
 
@@ -36,21 +37,23 @@ def _cap_observations(frame: pd.DataFrame, limit: int, seed: int) -> pd.DataFram
 def run_training(
     model_name: str,
     estimator,
+    search_spaces: dict,
     *,
     scale_features: bool = False,
-    max_train_observations: int = 30_000,
-    balanced_sample_weight: bool = False,
+    max_train_observations: int = 8_000,
+    n_iter: int = 8,
 ) -> None:
-    parser = argparse.ArgumentParser(description=f"Train and validate {model_name}.")
+    parser = argparse.ArgumentParser(description=f"Bayesian-tune, train, and validate {model_name}.")
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA, help="Training candidate CSV or CSV.GZ")
     parser.add_argument("--splits", type=Path, default=DEFAULT_SPLITS, help="Trip-level split assignment CSV")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--max-train-observations", type=int, default=max_train_observations)
     parser.add_argument("--max-validation-observations", type=int, default=10_000)
+    parser.add_argument("--n-iter", type=int, default=n_iter, help="Bayesian optimization evaluations")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
-    if args.max_train_observations < 1 or args.max_validation_observations < 1:
-        parser.error("observation limits must be positive")
+    if args.max_train_observations < 1 or args.max_validation_observations < 1 or args.n_iter < 5:
+        parser.error("observation limits must be positive and --n-iter must be at least 5")
 
     needed = FEATURE_COLUMNS + KEY_COLUMNS + [LABEL, "reference_alignment_confident", "has_reference_candidate"]
     candidates = pd.read_csv(args.data, usecols=needed, dtype={"trip_id": "string"})
@@ -83,11 +86,31 @@ def run_training(
     pipeline = Pipeline(steps)
     X_fit = fit[FEATURE_COLUMNS].replace([np.inf, -np.inf], np.nan)
     X_valid = validation[FEATURE_COLUMNS].replace([np.inf, -np.inf], np.nan)
-    if balanced_sample_weight:
-        weights = compute_sample_weight(class_weight="balanced", y=y_fit)
-        pipeline.fit(X_fit, y_fit, model__sample_weight=weights)
-    else:
-        pipeline.fit(X_fit, y_fit)
+    groups = fit["trip_id"].to_numpy()
+    n_splits = min(3, fit["trip_id"].nunique())
+    if n_splits < 2:
+        raise ValueError("Bayesian tuning needs at least two fit trips for grouped cross-validation.")
+
+    # Four Sobol starting evaluations seed the Gaussian-process optimizer;
+    # subsequent proposals are selected by Bayesian acquisition.
+    search = BayesSearchCV(
+        estimator=pipeline,
+        search_spaces=search_spaces,
+        n_iter=args.n_iter,
+        scoring="average_precision",
+        cv=GroupKFold(n_splits=n_splits),
+        n_jobs=1,
+        refit=True,
+        random_state=args.seed,
+        optimizer_kwargs={
+            "n_initial_points": 4,
+            "initial_point_generator": "sobol",
+        },
+        return_train_score=False,
+        error_score="raise",
+    )
+    search.fit(X_fit, y_fit, groups=groups)
+    pipeline = search.best_estimator_
 
     if hasattr(pipeline, "predict_proba"):
         scores = pipeline.predict_proba(X_valid)[:, 1]
@@ -101,6 +124,17 @@ def run_training(
         "validation_trip_count": int(validation["trip_id"].nunique()),
         "validation_observation_count": int(validation[KEY_COLUMNS].drop_duplicates().shape[0]),
         "validation_candidate_row_count": int(len(validation)),
+        "tuning_method": "BayesSearchCV (Gaussian-process Bayesian optimization)",
+        "tuning_scoring": "average_precision",
+        "tuning_cv": f"GroupKFold({n_splits}) grouped by trip_id",
+        "bayesian_iterations": int(args.n_iter),
+        "bayesian_initial_design_points": 4,
+        "bayesian_initial_design": "Sobol sequence",
+        "best_cv_average_precision": float(search.best_score_),
+        "best_hyperparameters": {
+            key: (value.item() if hasattr(value, "item") else value)
+            for key, value in search.best_params_.items()
+        },
         "validation_top1_observation_accuracy": None,
         "validation_roc_auc": None,
         "validation_average_precision": None,
@@ -120,7 +154,10 @@ def run_training(
     args.output_dir.mkdir(parents=True, exist_ok=True)
     model_path = args.output_dir / f"{model_name}.joblib"
     metrics_path = args.output_dir / f"{model_name}_metrics.json"
+    search_path = args.output_dir / f"{model_name}_bayes_search.csv"
     joblib.dump(pipeline, model_path)
     metrics_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
+    pd.DataFrame(search.cv_results_).to_csv(search_path, index=False)
     print(f"Saved model:   {model_path}")
     print(f"Saved metrics: {metrics_path}")
+    print(f"Saved search:  {search_path}")

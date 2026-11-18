@@ -146,6 +146,29 @@ Candidate generation uses a per-trip local azimuthal-equidistant projection so
 distances are measured in metres rather than degrees. Model scaling, if needed,
 must be fitted within each training fold to avoid leakage.
 
+## Model training and Bayesian hyperparameter tuning
+
+The five candidate classifiers are Logistic Regression, Linear SVM, Random
+Forest, KNN, and Histogram Gradient Boosting. Each script uses
+`BayesSearchCV` with a Gaussian-process optimizer and average precision as its
+tuning score. By default it uses four Sobol initialization evaluations,
+followed by four Bayesian proposals. It does not use grid search or
+randomized search.
+
+Tuning uses three-fold `GroupKFold` on the fit trips only, grouping by
+`trip_id`. The default is eight Bayesian evaluations, with at most 8,000 fit
+observations (4,000 for KNN) and 10,000 validation observations. Increase the
+evaluation count with `--n-iter` or the sample with `--max-train-observations`
+if more tuning time is available. Each run saves the selected model, validation
+metrics including the best cross-validation average precision, and a CSV of
+the Bayesian search results under `outputs/models/`.
+
+Run a model from the repository root, for example:
+
+```bash
+.venv/bin/python -m src.models.linear_svm
+```
+
 ## Source layout
 
 - `src/preprocessing/dataset.py`: shared file readers, trip container, and
@@ -156,8 +179,9 @@ must be fitted within each training fold to avoid leakage.
 - `src/preprocessing/label_alignment.py`: monotone reference-route alignment.
 - `src/features/candidate_features.py`: Person 2 candidate generation,
   feature calculation, CLI, and outputs.
-- `src/models/`, `src/optimization/`, `src/evaluation/`, and
-  `src/map_matching/`: reserved for the remaining experiment and decoder work.
+- `src/models/`: candidate classifiers and shared Bayesian tuning workflow.
+- `src/optimization/`, `src/evaluation/`, and `src/map_matching/`: reserved for
+  additional optimization, evaluation, and route-decoding work.
 
 ## Data integrity and reproducibility
 
