@@ -86,6 +86,7 @@ def load_trip(
     partition: str,
     *,
     require_route: bool = False,
+    include_route: bool = True,
     validate_indices: bool = True,
 ) -> TripData:
     """Load one trip and validate node/arc/route index relationships.
@@ -100,8 +101,14 @@ def load_trip(
     track = read_trip_file(trip_dir / f"{trip_id}.track", FILE_COLUMNS[".track"])
     nodes = read_trip_file(trip_dir / f"{trip_id}.nodes", FILE_COLUMNS[".nodes"])
     arcs = read_trip_file(trip_dir / f"{trip_id}.arcs", FILE_COLUMNS[".arcs"])
-    route = read_trip_file(
-        trip_dir / f"{trip_id}.route", FILE_COLUMNS[".route"], required=require_route
+    if require_route and not include_route:
+        raise ValueError("require_route=True cannot be combined with include_route=False")
+    route = (
+        read_trip_file(
+            trip_dir / f"{trip_id}.route", FILE_COLUMNS[".route"], required=require_route
+        )
+        if include_route
+        else None
     )
     assert track is not None and nodes is not None and arcs is not None
 

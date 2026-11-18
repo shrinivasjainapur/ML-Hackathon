@@ -1,85 +1,63 @@
-
+"""PathSnap FastAPI application."""
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.config import (
-    APP_NAME,
-    APP_VERSION,
-    CORS_ORIGINS,
-)
-
+from backend.config import APP_NAME, APP_VERSION, CORS_ORIGINS
 from backend.routes.trips import router as trips_router
-from backend.schemas.responses import HealthResponse
-
+from backend.schemas.responses import HealthResponse, PredictionResponse, ReadinessResponse
 from backend.services.prediction_service import (
-    generate_prediction,
     ModelNotReadyError,
+    generate_prediction,
+    prediction_readiness,
 )
 
-
-# Create FastAPI application
 app = FastAPI(
     title=APP_NAME,
     version=APP_VERSION,
-    description="PathSnap - Distributed Map-Matching and Route Reconstruction API",
+    description="PathSnap road matching and route reconstruction API",
 )
-
-
-# Enable CORS for frontend communication
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
-# Home endpoint
 @app.get("/", response_model=HealthResponse)
-def home():
-    return {
-        "status": "running",
-        "message": "PathSnap API is running successfully",
-    }
+def home() -> HealthResponse:
+    return HealthResponse(status="running", message="PathSnap API is running")
 
 
-# Health check endpoint
 @app.get("/health", response_model=HealthResponse)
-def health_check():
-    return {
-        "status": "healthy",
-        "message": "Backend is operational",
-    }
+def health_check() -> HealthResponse:
+    return HealthResponse(status="healthy", message="Backend process is operational")
 
 
-# Register trip routes
+@app.get("/health/ready", response_model=ReadinessResponse)
+def readiness_check() -> ReadinessResponse:
+    details = prediction_readiness()
+    return ReadinessResponse(
+        status="ready" if details["ready"] else "not_ready",
+        ready=bool(details["ready"]),
+        model_available=bool(details["model_available"]),
+        data_available=bool(details["data_available"]),
+    )
+
+
 app.include_router(trips_router)
 
 
-# Prediction endpoint
-@app.post("/predict/{trip_id}")
-def predict_trip(trip_id: str):
-
+@app.post("/predict/{trip_id}", response_model=PredictionResponse)
+def predict_trip(trip_id: str) -> PredictionResponse:
     try:
         result = generate_prediction(trip_id)
-
     except ValueError as error:
-        raise HTTPException(
-            status_code=500,
-            detail=str(error),
-        )
-
+        raise HTTPException(status_code=422, detail=str(error)) from error
     except ModelNotReadyError as error:
-        raise HTTPException(
-            status_code=503,
-            detail=str(error),
-        )
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
     if result is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Trip not found",
-        )
-
-    return result
+        raise HTTPException(status_code=404, detail="Trip not found")
+    return PredictionResponse.model_validate(result)

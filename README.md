@@ -1,12 +1,14 @@
 # PathSnap — distributed map matching and route reconstruction
 
 PathSnap maps noisy GPS observations to likely road segments and reconstructs
-the vehicle's route. This repository currently contains the dataset inventory
-and candidate-feature preparation stages.
+the vehicle's route. The repository contains trip preprocessing,
+candidate-feature generation, Bayesian model selection, HMM/Viterbi decoding,
+and a FastAPI plus React development application for visualizing predictions.
 
 ## Repository data layout
 
-In this checkout, the supplied data is in `Student folder/`:
+The local dataset is expected under `Student folder/` (or another path set with
+`PATHSNAP_DATA_DIR`):
 
 ```text
 Student folder/
@@ -38,6 +40,34 @@ python3 -m venv .venv
 On Windows PowerShell, use `.venv\Scripts\python.exe` in place of
 `.venv/bin/python` in the install and run commands below. Activating the
 environment is optional when calling its Python executable directly.
+
+## Run the web application
+
+The backend uses the finalized classifier and tuned HMM configuration saved by
+the model workflow. These generated artifacts and the source dataset are kept
+out of Git; each checkout needs its own dataset and model files. The API
+reports their availability at `/health/ready` and returns a clear service
+unavailable response when the model is missing.
+
+Start the backend from the repository root:
+
+```bash
+.venv/bin/python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+In another terminal, start the frontend:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Vite proxies `/api` requests to FastAPI. For split hosting, set
+`VITE_API_BASE_URL` to the backend's absolute URL. Runtime paths can be
+overridden with `PATHSNAP_DATA_DIR`, `PATHSNAP_MODEL_PATH`, and
+`PATHSNAP_HMM_CONFIG_PATH`. The frontend's own setup and check commands are in
+[`frontend/README.md`](frontend/README.md).
 
 ## Person 1: inspect and validate the data
 
@@ -232,7 +262,7 @@ evaluator UI inputs.
 - `src/models/`: candidate classifiers and shared Bayesian tuning workflow.
 - `src/map_matching/hmm_viterbi.py`: candidate-state directed-road decoder.
 - `src/evaluation/`: student-test scoring and classifier-versus-decoder comparison.
-- `src/optimization/`: reserved for additional optimization utilities.
+- `src/optimization/tune_hmm_parameters.py`: Bayesian search for HMM decoder settings.
 
 ## Data integrity and reproducibility
 

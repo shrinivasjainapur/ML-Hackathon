@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   AlertCircle,
@@ -32,6 +32,7 @@ import 'leaflet/dist/leaflet.css'
 import './App.css'
 
 import {
+  checkApiReadiness,
   fetchTrips,
   fetchTripDetails,
   predictRoute,
@@ -122,27 +123,34 @@ function App() {
   const [predicting, setPredicting] = useState(false)
   const [error, setError] = useState('')
   const [apiStatus, setApiStatus] = useState('connecting')
+  const tripRequestId = useRef(0)
+  const predictionRequestId = useRef(0)
 
 
   // Retrieve GPS observations for a selected trip
-  async function loadTripDetails(tripId) {
+  async function loadTripDetails(tripId, { signal } = {}) {
     if (!tripId) return
 
+    const requestId = ++tripRequestId.current
+    predictionRequestId.current += 1
     setLoadingTripDetails(true)
+    setPredicting(false)
     setTripDetails(null)
     setError('')
     setResult(null)
 
     try {
-      const data = await fetchTripDetails(tripId)
-      setTripDetails(data)
+      const data = await fetchTripDetails(tripId, { signal })
+      if (requestId === tripRequestId.current) setTripDetails(data)
     } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-        'Could not load GPS trip details. Check the backend API.'
-      )
+      if (!signal?.aborted && requestId === tripRequestId.current) {
+        setError(
+          err.response?.data?.detail ||
+          'Could not load GPS trip details. Check the backend API.'
+        )
+      }
     } finally {
-      setLoadingTripDetails(false)
+      if (requestId === tripRequestId.current) setLoadingTripDetails(false)
     }
   }
 
@@ -150,15 +158,19 @@ function App() {
   // Load available trips when the application starts
   useEffect(() => {
     let active = true
+    const controller = new AbortController()
 
     async function loadTrips() {
       try {
-        const data = await fetchTrips()
+        const [data, readiness] = await Promise.all([
+          fetchTrips({ signal: controller.signal }),
+          checkApiReadiness({ signal: controller.signal }),
+        ])
 
         if (!active) return
 
         setTrips(data)
-        setApiStatus('connected')
+        setApiStatus(readiness.ready ? 'connected' : 'not_ready')
 
         const firstTrip = data[0] || null
 
@@ -166,10 +178,10 @@ function App() {
 
         if (firstTrip) {
           const tripId = firstTrip.id ?? firstTrip.trip_id
-          await loadTripDetails(tripId)
+          await loadTripDetails(tripId, { signal: controller.signal })
         }
       } catch (err) {
-        if (!active) return
+        if (!active || controller.signal.aborted) return
 
         setApiStatus('offline')
 
@@ -186,6 +198,7 @@ function App() {
 
     return () => {
       active = false
+      controller.abort()
     }
   }, [])
 
@@ -222,11 +235,10 @@ function App() {
 
 
   // Combine all available points for map positioning
-  const mapPoints = [
-    ...gpsPoints,
-    ...predictedRoute,
-    ...roadNetwork,
-  ]
+  const mapPoints = useMemo(
+    () => [...gpsPoints, ...predictedRoute, ...roadNetwork],
+    [gpsPoints, predictedRoute, roadNetwork]
+  )
 
   const mapCenter = mapPoints[0] || [12.9716, 77.5946]
 
@@ -235,6 +247,7 @@ function App() {
   async function handlePredict() {
     if (!selectedTrip) return
 
+    const requestId = ++predictionRequestId.current
     setPredicting(true)
     setError('')
     setResult(null)
@@ -244,20 +257,31 @@ function App() {
 
       const data = await predictRoute(tripId)
 
-      setResult(data)
+      if (requestId === predictionRequestId.current) setResult(data)
     } catch (err) {
-      setError(
-        err.response?.data?.detail ||
-        'Route prediction failed. Check the backend API and try again.'
-      )
+      if (requestId === predictionRequestId.current) {
+        setError(
+          err.response?.data?.detail ||
+          'Route prediction failed. Check the backend API and try again.'
+        )
+      }
     } finally {
-      setPredicting(false)
+      if (requestId === predictionRequestId.current) setPredicting(false)
     }
   }
 
 
   // Prediction metrics
   const metrics = result?.metrics || {}
+  const matchedValue = Number.isFinite(metrics.matched_observations)
+    ? `${metrics.matched_observations} / ${metrics.total_observations}`
+    : undefined
+  const coverageValue = Number.isFinite(metrics.coverage_ratio)
+    ? `${(metrics.coverage_ratio * 100).toFixed(1)}%`
+    : undefined
+  const inferenceValue = Number.isFinite(metrics.inference_seconds)
+    ? metrics.inference_seconds.toFixed(2)
+    : undefined
 
 
   return (
@@ -391,7 +415,9 @@ function App() {
             <span className="status-dot" />
 
             {apiStatus === 'connected'
-              ? 'API Connected'
+              ? 'API Ready'
+              : apiStatus === 'not_ready'
+                ? 'Model Not Ready'
               : apiStatus === 'offline'
                 ? 'API Offline'
                 : 'Connecting'}
@@ -696,8 +722,8 @@ function App() {
 
               <p>
                 {result
-                  ? 'The backend returned a prediction for this trip.'
-                  : 'GPS observations can be viewed while model integration is in progress.'}
+                  ? 'The classifier and road-network decoder matched this trip.'
+                  : 'Run the configured classifier and road-network decoder to view a route.'}
               </p>
 
             </div>
@@ -732,40 +758,23 @@ function App() {
 
             <MetricCard
               icon={Gauge}
-              label="Route Accuracy"
-              value={metrics.route_accuracy ?? metrics.accuracy}
-              unit={
-                metrics.route_accuracy !== undefined ||
-                metrics.accuracy !== undefined
-                  ? '%'
-                  : ''
-              }
+              label="Matched observations"
+              value={matchedValue}
             />
 
 
             <MetricCard
               icon={Navigation}
-              label="Mean Error"
-              value={metrics.mean_error ?? metrics.mean_distance_error}
-              unit={
-                metrics.mean_error !== undefined ||
-                metrics.mean_distance_error !== undefined
-                  ? 'm'
-                  : ''
-              }
+              label="Route coverage"
+              value={coverageValue}
             />
 
 
             <MetricCard
               icon={Zap}
               label="Inference Time"
-              value={metrics.inference_time ?? metrics.execution_time}
-              unit={
-                metrics.inference_time !== undefined ||
-                metrics.execution_time !== undefined
-                  ? 's'
-                  : ''
-              }
+              value={inferenceValue}
+              unit={inferenceValue ? 's' : ''}
             />
 
 

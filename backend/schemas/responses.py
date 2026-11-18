@@ -1,5 +1,19 @@
-from pydantic import BaseModel
-from typing import Optional
+"""Stable response schemas shared by the frontend and API."""
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class HealthResponse(BaseModel):
+    status: str
+    message: str
+
+
+class ReadinessResponse(BaseModel):
+    status: str
+    ready: bool
+    model_available: bool
+    data_available: bool
 
 
 class TripResponse(BaseModel):
@@ -12,15 +26,16 @@ class TripsListResponse(BaseModel):
     count: int
 
 
-class HealthResponse(BaseModel):
-    status: str
-    message: str
-
-
 class GPSPoint(BaseModel):
     lat: float
     lng: float
-    timestamp: str
+    timestamp: float
+
+
+class TripDetailsResponse(BaseModel):
+    trip_id: str
+    point_count: int
+    gps_points: list[GPSPoint]
 
 
 class RoutePoint(BaseModel):
@@ -29,14 +44,18 @@ class RoutePoint(BaseModel):
 
 
 class PredictionMetrics(BaseModel):
-    inference_seconds: Optional[float] = None
-    matched_observations: Optional[int] = None
-    total_observations: Optional[int] = None
+    inference_seconds: float
+    matched_observations: int
+    total_observations: int
+    coverage_ratio: float = Field(ge=0, le=1)
+    large_gap_resets: int
 
 
 class PredictionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     trip_id: str
     gps_points: list[GPSPoint]
     predicted_route: list[RoutePoint]
-    road_network: Optional[list[RoutePoint]] = None
-    metrics: Optional[PredictionMetrics] = None
+    road_network: list[RoutePoint] = Field(default_factory=list)
+    metrics: PredictionMetrics

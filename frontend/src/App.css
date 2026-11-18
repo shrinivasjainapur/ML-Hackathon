@@ -275,6 +275,11 @@
   background: #f07878;
 }
 
+.connection-status.not_ready .status-dot {
+  background: #e8b45c;
+  box-shadow: 0 0 10px #e8b45c55;
+}
+
 .connection-status.connecting .status-dot {
   background: #e8b45c;
 }
