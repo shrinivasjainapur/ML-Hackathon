@@ -183,6 +183,27 @@ read evaluator-test data.
 
 ## HMM/Viterbi route decoding
 
+Tune decoder parameters with the same trip-grouped training validation split
+used for model selection. This uses sequential Gaussian-process Bayesian
+optimization (Sobol initialization and expected improvement), with a guardrail
+that selected settings must preserve classifier-only validation Top-1 accuracy.
+It does not read `student_test` or evaluator data during tuning:
+
+```bash
+.venv/bin/python -m src.optimization.tune_hmm_parameters --calls 8
+```
+
+The selected settings are written to
+`outputs/models/hmm_decoder_config.json`; each trial is recorded in
+`outputs/evaluation/hmm_bayes_search.csv`. Apply and score the selected config
+on the permitted development partition with:
+
+```bash
+.venv/bin/python -m src.evaluation.compare_hmm_student_test \
+  --decoder-config outputs/models/hmm_decoder_config.json \
+  --output-prefix student_test_hmm_bayes_tuned
+```
+
 Compare the final classifier-only route with directed-road HMM/Viterbi decoding
 on the permitted development partition:
 

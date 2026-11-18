@@ -14,6 +14,9 @@ env/
 .ipynb_checkpoints/
 data/
 datasets/
+Student folder/
+evaluator_test/
+evaluator_test.zip
 outputs/
 reports/generated/
 

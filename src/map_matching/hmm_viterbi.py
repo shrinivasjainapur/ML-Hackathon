@@ -79,10 +79,15 @@ def _transition_log_probability(
     gps_distance_m: float | None,
     elapsed_seconds: float,
     disconnected_penalty: float,
+    sigma_floor_m: float,
+    sigma_time_scale_m: float,
+    sigma_distance_fraction: float,
+    same_arc_bonus: float,
+    connected_arc_bonus: float,
 ) -> tuple[float, bool]:
     dt = max(0.1, float(elapsed_seconds))
     displacement = max(0.0, float(gps_distance_m or 0.0))
-    sigma = max(15.0, 8.0 * math.sqrt(dt) + 0.25 * displacement)
+    sigma = max(sigma_floor_m, sigma_time_scale_m * math.sqrt(dt) + sigma_distance_fraction * displacement)
     search_limit = min(5000.0, max(100.0, displacement + 4.0 * sigma))
     arc_a, arc_b = int(previous["arc_id"]), int(current["arc_id"])
     valid = (
@@ -106,7 +111,7 @@ def _transition_log_probability(
             return -disconnected_penalty / math.sqrt(dt), False
         route_distance = (1.0 - fraction_a) * length_a + middle + fraction_b * length_b
     residual = (route_distance - displacement) / sigma
-    connection_bonus = 1.0 if arc_a == arc_b else 0.75
+    connection_bonus = same_arc_bonus if arc_a == arc_b else connected_arc_bonus
     return connection_bonus - 0.5 * residual * residual, True
 
 
@@ -119,6 +124,13 @@ def decode_trip_candidates(
     probability_column: str = "_model_probability",
     max_gap_seconds: float = 60.0,
     disconnected_penalty: float = 8.0,
+    emission_weight: float = 1.0,
+    transition_weight: float = 1.0,
+    sigma_floor_m: float = 15.0,
+    sigma_time_scale_m: float = 8.0,
+    sigma_distance_fraction: float = 0.25,
+    same_arc_bonus: float = 1.0,
+    connected_arc_bonus: float = 0.75,
 ) -> tuple[pd.DataFrame, dict[str, int]]:
     """Decode candidate arcs, returning one Viterbi-selected arc per candidate observation.
 
@@ -131,8 +143,9 @@ def decode_trip_candidates(
     missing = needed - set(candidate_rows.columns)
     if missing:
         raise ValueError(f"Candidate rows missing columns: {sorted(missing)}")
-    if max_gap_seconds <= 0 or disconnected_penalty <= 0:
-        raise ValueError("Gap limit and disconnected penalty must be positive")
+    if min(max_gap_seconds, disconnected_penalty, emission_weight, transition_weight,
+           sigma_floor_m, sigma_time_scale_m, sigma_distance_fraction) <= 0:
+        raise ValueError("Decoder scales and penalties must be positive")
 
     track_index = track.set_index("obs_idx", drop=False)
     network = DirectedRoadNetwork(node_lonlat, arc_endpoints)
@@ -175,7 +188,7 @@ def decode_trip_candidates(
     def finish_chain(chain: list[dict[str, object]]) -> None:
         if not chain:
             return
-        dynamic = np.array([state["log_emission"] for state in chain[0]["states"]], dtype=float)
+        dynamic = emission_weight * np.array([state["log_emission"] for state in chain[0]["states"]], dtype=float)
         backpointers: list[np.ndarray] = []
         connected_matrices: list[np.ndarray] = []
         for layer_index in range(1, len(chain)):
@@ -190,13 +203,15 @@ def decode_trip_candidates(
             for i, state_a in enumerate(previous["states"]):
                 for j, state_b in enumerate(current["states"]):
                     transition[i, j], connected[i, j] = _transition_log_probability(
-                        state_a, state_b, network, displacement, elapsed, disconnected_penalty
+                        state_a, state_b, network, displacement, elapsed, disconnected_penalty,
+                        sigma_floor_m, sigma_time_scale_m, sigma_distance_fraction,
+                        same_arc_bonus, connected_arc_bonus,
                     )
-            total_scores = dynamic[:, None] + transition
+            total_scores = dynamic[:, None] + transition_weight * transition
             best_previous = np.argmax(total_scores, axis=0)
             best_scores = total_scores[best_previous, np.arange(len(current["states"]))]
             emissions = np.array([state["log_emission"] for state in current["states"]], dtype=float)
-            dynamic = best_scores + emissions
+            dynamic = best_scores + emission_weight * emissions
             backpointers.append(best_previous)
             connected_matrices.append(connected)
         state_path = np.empty(len(chain), dtype=np.int64)

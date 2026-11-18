@@ -64,8 +64,8 @@ def _continuity(track: pd.DataFrame, predictions: pd.DataFrame, endpoints: np.nd
     return connected, checked, skipped
 
 
-def _load_trip(data_root: Path, trip_id: str):
-    folder = data_root / "student_test" / trip_id
+def _load_trip(data_root: Path, trip_id: str, partition: str = "student_test"):
+    folder = data_root / partition / trip_id
     track = read_trip_file(folder / f"{trip_id}.track", FILE_COLUMNS[".track"])
     nodes = read_trip_file(folder / f"{trip_id}.nodes", FILE_COLUMNS[".nodes"])
     arcs = read_trip_file(folder / f"{trip_id}.arcs", FILE_COLUMNS[".arcs"])
@@ -77,7 +77,10 @@ def _load_trip(data_root: Path, trip_id: str):
     return track, node_lonlat, endpoints
 
 
-def _evaluate_trip(trip_id, all_candidates, model, data_root, max_gap_seconds, disconnected_penalty):
+def _evaluate_trip(
+    trip_id, all_candidates, model, data_root, max_gap_seconds, disconnected_penalty,
+    decoder_parameters=None,
+):
     rows = all_candidates.loc[all_candidates["trip_id"].eq(trip_id)].copy()
     X = rows[FEATURE_COLUMNS].replace([np.inf, -np.inf], np.nan)
     class_values = np.asarray(model.classes_)
@@ -96,8 +99,10 @@ def _evaluate_trip(trip_id, all_candidates, model, data_root, max_gap_seconds, d
     decode_started = time.perf_counter()
     hmm_rows, diagnostics = decode_trip_candidates(
         rows, track, nodes, endpoints,
-        max_gap_seconds=max_gap_seconds,
-        disconnected_penalty=disconnected_penalty,
+        **(decoder_parameters or {
+            "max_gap_seconds": max_gap_seconds,
+            "disconnected_penalty": disconnected_penalty,
+        }),
     )
     decode_seconds = time.perf_counter() - decode_started
 
@@ -195,7 +200,16 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--max-gap-seconds", type=float, default=60.0)
     parser.add_argument("--disconnected-penalty", type=float, default=8.0)
+    parser.add_argument("--decoder-config", type=Path, help="JSON file containing tuned decoder_parameters")
+    parser.add_argument("--output-prefix", default="student_test_hmm_comparison")
     args = parser.parse_args()
+    decoder_parameters = {
+        "max_gap_seconds": args.max_gap_seconds,
+        "disconnected_penalty": args.disconnected_penalty,
+    }
+    if args.decoder_config:
+        config = json.loads(args.decoder_config.read_text(encoding="utf-8"))
+        decoder_parameters.update(config.get("decoder_parameters", config))
     model = joblib.load(args.model)
     columns = FEATURE_COLUMNS + KEYS + [
         "candidate_arc_id", "reference_arc_id", "reference_alignment_confident",
@@ -206,7 +220,8 @@ def main() -> None:
     for trip_id in sorted(candidates["trip_id"].unique()):
         result, predictions, counts = _evaluate_trip(
             str(trip_id), candidates, model, args.data_root,
-            args.max_gap_seconds, args.disconnected_penalty,
+            decoder_parameters["max_gap_seconds"], decoder_parameters["disconnected_penalty"],
+            decoder_parameters=decoder_parameters,
         )
         trip_results.append(result)
         prediction_tables.append(predictions)
@@ -255,22 +270,21 @@ def main() -> None:
             "state": "directed candidate road arc",
             "emission": "log model probability normalized within each observation",
             "transition": "directed shortest-path distance versus geodesic GPS displacement; finite penalty if disconnected",
-            "max_gap_seconds": args.max_gap_seconds,
-            "disconnected_penalty": args.disconnected_penalty,
+            **decoder_parameters,
             "large_gap_behavior": "reset Viterbi chain for timestamp gaps above max_gap_seconds",
             "missing_candidate_behavior": "arc_id -1 for missing observations; bridge candidate-bearing observations when possible",
         },
         "notes": "Reference labels are used for student_test scoring only. No evaluator_test data was read.",
     }
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    (args.output_dir / "student_test_hmm_comparison.json").write_text(json.dumps(comparison, indent=2) + "\n", encoding="utf-8")
+    (args.output_dir / f"{args.output_prefix}.json").write_text(json.dumps(comparison, indent=2) + "\n", encoding="utf-8")
     pd.DataFrame([
         {"method": "classifier_only", **comparison["classifier_only"]},
         {"method": "hmm_viterbi", **comparison["hmm_viterbi"]},
-    ]).to_csv(args.output_dir / "student_test_hmm_comparison.csv", index=False)
-    pd.DataFrame(trip_results).to_csv(args.output_dir / "student_test_hmm_per_trip.csv", index=False)
+    ]).to_csv(args.output_dir / f"{args.output_prefix}.csv", index=False)
+    pd.DataFrame(trip_results).to_csv(args.output_dir / f"{args.output_prefix}_per_trip.csv", index=False)
     pd.concat(prediction_tables, ignore_index=True).to_csv(
-        args.output_dir / "student_test_hmm_predictions.csv.gz", index=False, compression="gzip"
+        args.output_dir / f"{args.output_prefix}_predictions.csv.gz", index=False, compression="gzip"
     )
     print(f"Overall Top-1: {classifier_accuracy:.4f} -> {hmm_accuracy:.4f}")
     print(f"Overall Macro-F1: {classifier_f1:.4f} -> {hmm_f1:.4f}")
